@@ -48,6 +48,7 @@ private[http] object OutgoingConnectionBlueprint {
                                   +------------+
   */
   def apply(hostHeader: Host,
+            eagerClose: Boolean,
             settings: ClientConnectionSettings,
             log: LoggingAdapter): Http.ClientLayer = {
     import settings._
@@ -70,7 +71,7 @@ private[http] object OutgoingConnectionBlueprint {
     import ParserOutput._
     val responsePrep = Flow[List[ResponseOutput]]
       .mapConcat(conforms)
-      .splitWhen(x ⇒ x.isInstanceOf[MessageStart] || x == MessageEnd)
+      .splitWhen(x ⇒ x.isInstanceOf[MessageStart] || x == MessageEnd, eagerClose)
       .prefixAndTail(1)
       .filter {
         case (Seq(MessageEnd), remaining) ⇒

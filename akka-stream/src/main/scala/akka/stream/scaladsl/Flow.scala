@@ -1089,22 +1089,35 @@ trait FlowOps[+Out, +Mat] {
    *
    * '''Completes when''' upstream completes
    *
-   * '''Cancels when''' downstream cancels and substreams cancel
+   * '''Cancels when''' downstream cancels and substreams cancel if eagerCancel=false, downstream
+   * cancels or any substream cancels if eagerCancel=true
    *
    * See also [[FlowOps.splitAfter]].
    */
-  def splitWhen(p: Out ⇒ Boolean): SubFlow[Out, Mat, Repr, Closed] = {
+  def splitWhen(eagerCancel: Boolean)(p: Out ⇒ Boolean): SubFlow[Out, Mat, Repr, Closed] = {
     val merge = new SubFlowImpl.MergeBack[Out, Repr] {
       override def apply[T](flow: Flow[Out, T, NotUsed], breadth: Int): Repr[T] =
-        via(Split.when(p))
+        via(Split.when(p, eagerCancel))
           .map(_.via(flow))
           .via(new FlattenMerge(breadth))
     }
+
     val finish: (Sink[Out, NotUsed]) ⇒ Closed = s ⇒
-      via(Split.when(p))
+      via(Split.when(p, eagerCancel))
         .to(Sink.foreach(_.runWith(s)(GraphInterpreter.currentInterpreter.materializer)))
+
     new SubFlowImpl(Flow[Out], merge, finish)
   }
+
+  /**
+   * This operation applies the given predicate to all incoming elements and
+   * emits them to a stream of output streams, always beginning a new one with
+   * the current element if the given predicate returns true for it.
+   *
+   * @see [[#splitWhen]]
+   */
+  def splitWhen(p: Out ⇒ Boolean): SubFlow[Out, Mat, Repr, Closed] =
+    splitWhen(eagerCancel = false)(p)
 
   /**
    * This operation applies the given predicate to all incoming elements and
@@ -1146,22 +1159,33 @@ trait FlowOps[+Out, +Mat] {
    *
    * '''Completes when''' upstream completes
    *
-   * '''Cancels when''' downstream cancels and substreams cancel
+   * '''Cancels when''' downstream cancels and substreams cancel if eagerCancel=false, downstream
+   * cancels or any substream cancels if eagerCancel=true
    *
    * See also [[FlowOps.splitWhen]].
    */
-  def splitAfter(p: Out ⇒ Boolean): SubFlow[Out, Mat, Repr, Closed] = {
+  def splitAfter(eagerCancel: Boolean)(p: Out ⇒ Boolean): SubFlow[Out, Mat, Repr, Closed] = {
     val merge = new SubFlowImpl.MergeBack[Out, Repr] {
       override def apply[T](flow: Flow[Out, T, NotUsed], breadth: Int): Repr[T] =
-        via(Split.after(p))
+        via(Split.after(p, eagerCancel))
           .map(_.via(flow))
           .via(new FlattenMerge(breadth))
     }
     val finish: (Sink[Out, NotUsed]) ⇒ Closed = s ⇒
-      via(Split.after(p))
+      via(Split.after(p, eagerCancel))
         .to(Sink.foreach(_.runWith(s)(GraphInterpreter.currentInterpreter.materializer)))
     new SubFlowImpl(Flow[Out], merge, finish)
   }
+
+  /**
+   * This operation applies the given predicate to all incoming elements and
+   * emits them to a stream of output streams. It *ends* the current substream when the
+   * predicate is true.
+   *
+   * @see [[#splitAfter]]
+   */
+  def splitAfter(p: Out ⇒ Boolean): SubFlow[Out, Mat, Repr, Closed] =
+    splitAfter(eagerCancel = false)(p)
 
   /**
    * Transform each input element into a `Source` of output elements that is

@@ -205,23 +205,25 @@ class Http(system: ExtendedActorSystem) extends akka.actor.Extension {
   /**
    * Constructs a client layer stage using the configured default [[ClientConnectionSettings]].
    */
-  def clientLayer(hostHeader: headers.Host): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
-    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader)))
+  def clientLayer(hostHeader: headers.Host, eagerClose: Boolean): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
+    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), eagerClose))
 
   /**
    * Constructs a client layer stage using the given [[ClientConnectionSettings]].
    */
   def clientLayer(hostHeader: headers.Host,
+                  eagerClose: Boolean,
                   settings: ClientConnectionSettings): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
-    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), settings))
+    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), eagerClose, settings))
 
   /**
    * Constructs a client layer stage using the given [[ClientConnectionSettings]].
    */
   def clientLayer(hostHeader: headers.Host,
+                  eagerClose: Boolean,
                   settings: ClientConnectionSettings,
                   log: LoggingAdapter): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
-    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), settings, log))
+    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), eagerClose, settings, log))
 
   /**
    * Creates a [[Flow]] representing a prospective HTTP client connection to the given endpoint.
@@ -263,11 +265,12 @@ class Http(system: ExtendedActorSystem) extends akka.actor.Extension {
    */
   def outgoingConnection(host: String, port: Int,
                          localAddress: Optional[InetSocketAddress],
+                         eagerClose: Boolean,
                          settings: ClientConnectionSettings,
                          log: LoggingAdapter): Flow[HttpRequest, HttpResponse, Future[OutgoingConnection]] =
     Flow.fromGraph {
       akka.stream.scaladsl.Flow[HttpRequest].map(_.asScala)
-        .viaMat(delegate.outgoingConnection(host, port, localAddress.asScala, settings, log))(Keep.right)
+        .viaMat(delegate.outgoingConnection(host, port, localAddress.asScala, eagerClose, settings, log))(Keep.right)
         .mapMaterializedValue(_.map(new OutgoingConnection(_))(ec))
     }
 
@@ -279,12 +282,13 @@ class Http(system: ExtendedActorSystem) extends akka.actor.Extension {
    */
   def outgoingConnectionTls(host: String, port: Int,
                             localAddress: Optional[InetSocketAddress],
+                            eagerClose: Boolean,
                             settings: ClientConnectionSettings,
                             httpsContext: Optional[HttpsContext],
                             log: LoggingAdapter): Flow[HttpRequest, HttpResponse, Future[OutgoingConnection]] =
     Flow.fromGraph {
       akka.stream.scaladsl.Flow[HttpRequest].map(_.asScala)
-        .viaMat(delegate.outgoingConnectionTls(host, port, localAddress.asScala, settings,
+        .viaMat(delegate.outgoingConnectionTls(host, port, localAddress.asScala, eagerClose, settings,
           httpsContext.asScala.map(_.asInstanceOf[akka.http.scaladsl.HttpsContext]), log))(Keep.right)
         .mapMaterializedValue(_.map(new OutgoingConnection(_))(ec))
     }
