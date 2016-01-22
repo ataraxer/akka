@@ -291,23 +291,25 @@ class Http(system: ExtendedActorSystem) extends akka.actor.Extension {
   /**
    * Constructs a client layer stage using the configured default [[akka.http.javadsl.settings.ClientConnectionSettings]].
    */
-  def clientLayer(hostHeader: headers.Host): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
-    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader)))
+  def clientLayer(hostHeader: headers.Host, eagerClose: Boolean): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
+    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), eagerClose))
 
   /**
    * Constructs a client layer stage using the given [[akka.http.javadsl.settings.ClientConnectionSettings]].
    */
   def clientLayer(hostHeader: headers.Host,
+                  eagerClose: Boolean,
                   settings: ClientConnectionSettings): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
-    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), settings.asScala))
+    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), eagerClose, settings.asScala))
 
   /**
    * Constructs a client layer stage using the given [[ClientConnectionSettings]].
    */
   def clientLayer(hostHeader: headers.Host,
+                  eagerClose: Boolean,
                   settings: ClientConnectionSettings,
                   log: LoggingAdapter): BidiFlow[HttpRequest, SslTlsOutbound, SslTlsInbound, HttpResponse, NotUsed] =
-    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), settings.asScala, log))
+    adaptClientLayer(delegate.clientLayer(JavaMapping.toScala(hostHeader), eagerClose, settings.asScala, log))
 
   /**
    * Creates a [[Flow]] representing a prospective HTTP client connection to the given endpoint.
@@ -337,12 +339,13 @@ class Http(system: ExtendedActorSystem) extends akka.actor.Extension {
   def outgoingConnection(host: String, port: Int,
                          connectionContext: ConnectionContext,
                          localAddress: Optional[InetSocketAddress],
+                         eagerClose: Boolean,
                          settings: ClientConnectionSettings,
                          log: LoggingAdapter): Flow[HttpRequest, HttpResponse, CompletionStage[OutgoingConnection]] =
     adaptOutgoingFlow {
       connectionContext match {
-        case https: HttpsConnectionContext ⇒ delegate.outgoingConnectionHttps(host, port, https.asScala, localAddress.asScala, settings.asScala, log)
-        case _                             ⇒ delegate.outgoingConnection(host, port, localAddress.asScala, settings.asScala, log)
+        case https: HttpsConnectionContext ⇒ delegate.outgoingConnectionHttps(host, port, https.asScala, localAddress.asScala, eagerClose, settings.asScala, log)
+        case _                             ⇒ delegate.outgoingConnection(host, port, localAddress.asScala, eagerClose, settings.asScala, log)
       }
     }
 

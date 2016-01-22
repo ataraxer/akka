@@ -109,7 +109,7 @@ class TlsEndpointVerificationSpec extends AkkaSpec("""
         .join(Flow[HttpRequest].map(handler))
 
     val client =
-      Http().clientLayer(Host(hostname, 8080))
+      Http().clientLayer(Host(hostname, 8080), eagerClose = false)
         .atop(clientSideTls)
 
     client.join(server)

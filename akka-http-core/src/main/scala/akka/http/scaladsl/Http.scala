@@ -198,9 +198,10 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    */
   def outgoingConnection(host: String, port: Int = 80,
                          localAddress: Option[InetSocketAddress] = None,
+                         eagerClose: Boolean = false,
                          settings: ClientConnectionSettings = ClientConnectionSettings(system),
                          log: LoggingAdapter = system.log): Flow[HttpRequest, HttpResponse, Future[OutgoingConnection]] =
-    _outgoingConnection(host, port, localAddress, settings, ConnectionContext.noEncryption(), log)
+    _outgoingConnection(host, port, localAddress, eagerClose, settings, ConnectionContext.noEncryption(), log)
 
   /**
    * Same as [[outgoingConnection]] but for encrypted (HTTPS) connections.
@@ -214,15 +215,20 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
   def outgoingConnectionHttps(host: String, port: Int = 443,
                               connectionContext: HttpsConnectionContext = defaultClientHttpsContext,
                               localAddress: Option[InetSocketAddress] = None,
+                              eagerClose: Boolean = false,
                               settings: ClientConnectionSettings = ClientConnectionSettings(system),
                               log: LoggingAdapter = system.log): Flow[HttpRequest, HttpResponse, Future[OutgoingConnection]] =
-    _outgoingConnection(host, port, localAddress, settings, connectionContext, log)
+    _outgoingConnection(host, port, localAddress, eagerClose, settings, connectionContext, log)
 
-  private def _outgoingConnection(host: String, port: Int, localAddress: Option[InetSocketAddress],
-                                  settings: ClientConnectionSettings, connectionContext: ConnectionContext,
+  private def _outgoingConnection(host: String,
+                                  port: Int,
+                                  localAddress: Option[InetSocketAddress],
+                                  eagerClose: Boolean,
+                                  settings: ClientConnectionSettings,
+                                  connectionContext: ConnectionContext,
                                   log: LoggingAdapter): Flow[HttpRequest, HttpResponse, Future[OutgoingConnection]] = {
     val hostHeader = if (port == connectionContext.defaultPort) Host(host) else Host(host, port)
-    val layer = clientLayer(hostHeader, settings, log)
+    val layer = clientLayer(hostHeader, eagerClose, settings, log)
     layer.joinMat(_outgoingTlsConnectionLayer(host, port, localAddress, settings, connectionContext, log))(Keep.right)
   }
 
@@ -245,16 +251,17 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * Constructs a [[ClientLayer]] stage using the configured default [[ClientConnectionSettings]],
    * configured using the `akka.http.client` config section.
    */
-  def clientLayer(hostHeader: Host): ClientLayer =
-    clientLayer(hostHeader, ClientConnectionSettings(system))
+  def clientLayer(hostHeader: Host, eagerClose: Boolean): ClientLayer =
+    clientLayer(hostHeader, eagerClose, ClientConnectionSettings(system))
 
   /**
    * Constructs a [[ClientLayer]] stage using the given [[ClientConnectionSettings]].
    */
   def clientLayer(hostHeader: Host,
+                  eagerClose: Boolean,
                   settings: ClientConnectionSettings,
                   log: LoggingAdapter = system.log): ClientLayer =
-    OutgoingConnectionBlueprint(hostHeader, settings, log)
+    OutgoingConnectionBlueprint(hostHeader, eagerClose, settings, log)
 
   // ** CONNECTION POOL ** //
 

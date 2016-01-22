@@ -356,9 +356,9 @@ class HttpExtensionApiSpec extends WordSpec with Matchers with BeforeAndAfterAll
       // TODO actually cover these with runtime tests, compile only for now
       pending
       val connectionSettings = ClientConnectionSettings.create(system)
-      http.clientLayer(headers.Host.create("example.com"))
-      http.clientLayer(headers.Host.create("example.com"), connectionSettings)
-      http.clientLayer(headers.Host.create("example.com"), connectionSettings, loggingAdapter)
+      http.clientLayer(headers.Host.create("example.com"), eagerClose = false)
+      http.clientLayer(headers.Host.create("example.com"), eagerClose = false, connectionSettings)
+      http.clientLayer(headers.Host.create("example.com"), eagerClose = false, connectionSettings, loggingAdapter)
     }
 
     "create an outgoing connection (with a string)" in {
@@ -387,6 +387,7 @@ class HttpExtensionApiSpec extends WordSpec with Matchers with BeforeAndAfterAll
         port,
         connectionContext,
         Optional.empty(),
+        eagerClose = false,
         ClientConnectionSettings.create(system),
         NoLogging)
 
