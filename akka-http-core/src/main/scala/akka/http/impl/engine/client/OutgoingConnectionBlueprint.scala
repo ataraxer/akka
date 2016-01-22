@@ -142,7 +142,9 @@ private[http] object OutgoingConnectionBlueprint {
     val shape = new FlowShape(in, out)
 
     override def createLogic(effectiveAttributes: Attributes) = new GraphStageLogic(shape) {
-      private val idle = new InHandler {
+      private var entitySubstreamStarted = false
+
+      private val idle = new InHandler with OutHandler {
         def onPush(): Unit = grab(in) match {
           case ResponseStart(statusCode, protocol, headers, entityCreator, _) ⇒
             val entity = createEntity(entityCreator) withSizeLimit parserSettings.maxContentLength
@@ -152,18 +154,23 @@ private[http] object OutgoingConnectionBlueprint {
             throw IllegalResponseException(info)
 
           case other ⇒
-            throw new IllegalStateException(f"ResponseStart expected but $other received.")
+            throw new IllegalStateException(s"ResponseStart expected but $other received.")
+        }
+
+        def onPull(): Unit = {
+          if (!entitySubstreamStarted) pull(in)
         }
       }
 
       private val waitForMessageEnd = new InHandler {
         def onPush(): Unit = grab(in) match {
           case MessageEnd ⇒ setHandler(in, idle)
-          case other      ⇒ throw new IllegalStateException(f"MessageEnd expected but $other received.")
+          case other      ⇒ throw new IllegalStateException(s"MessageEnd expected but $other received.")
         }
       }
 
       setHandler(in, idle)
+      setHandler(out, idle)
 
       private def createEntity(creator: EntityCreator[ResponseOutput, ResponseEntity]): ResponseEntity = {
         creator match {
@@ -174,6 +181,7 @@ private[http] object OutgoingConnectionBlueprint {
 
           case StreamedEntityCreator(creator) ⇒
             val entitySource = new SubSourceOutlet[ResponseOutput]("EntitySource")
+            entitySubstreamStarted = true
             var responseCancelled = false
 
             entitySource.setHandler(new OutHandler {
@@ -195,8 +203,10 @@ private[http] object OutgoingConnectionBlueprint {
               override def onPush(): Unit = grab(in) match {
                 case MessageEnd ⇒
                   entitySource.complete()
-                  setHandler(in, idle)
+                  entitySubstreamStarted = false
                   responseCancelled = false
+                  setHandler(in, idle)
+                  setHandler(out, idle)
 
                 case messagePart ⇒
                   // Drain response to prevent stalling
@@ -218,10 +228,6 @@ private[http] object OutgoingConnectionBlueprint {
             creator(Source.fromGraph(entitySource.source))
         }
       }
-
-      setHandler(out, new OutHandler {
-        def onPull(): Unit = pull(in)
-      })
     }
   }
 
