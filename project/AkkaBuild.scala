@@ -274,6 +274,12 @@ object AkkaBuild extends Build {
     id = "akka-stream-experimental",
     base = file("akka-stream"),
     dependencies = Seq(actor)
+  ).settings(
+    initialCommands :=
+      """|import akka.stream._
+         |import akka.stream.scaladsl._
+         |implicit val materializer = ActorMaterializer()
+         |""".stripMargin
   )
 
   lazy val streamTests = Project(
@@ -483,12 +489,15 @@ object AkkaBuild extends Build {
          |import akka.util.Timeout
          |var config = ConfigFactory.parseString("akka.stdout-loglevel=INFO,akka.loglevel=DEBUG,pinned{type=PinnedDispatcher,executor=thread-pool-executor,throughput=1000}")
          |var remoteConfig = ConfigFactory.parseString("akka.remote.netty{port=0,use-dispatcher-for-io=akka.actor.default-dispatcher,execution-pool-size=0},akka.actor.provider=akka.remote.RemoteActorRefProvider").withFallback(config)
-         |var system: ActorSystem = null
-         |implicit def _system = system
-         |def startSystem(remoting: Boolean = false) { system = ActorSystem("repl", if(remoting) remoteConfig else config); println("don’t forget to system.terminate()!") }
+         |implicit val system = ActorSystem("repl", if(remoting) remoteConfig else config)
          |implicit def ec = system.dispatcher
          |implicit val timeout = Timeout(5 seconds)
          |""".stripMargin,
+
+    cleanupCommands :=
+      """|system.shutdown()
+         |""".stripMargin,
+
 
     /**
      * Test settings

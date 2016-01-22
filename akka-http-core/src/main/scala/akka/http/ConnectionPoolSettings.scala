@@ -16,7 +16,11 @@ import com.typesafe.config.Config
 import scala.concurrent.duration.Duration
 import scala.compat.java8.OptionConverters._
 
-final case class HostConnectionPoolSetup(host: String, port: Int, setup: ConnectionPoolSetup)
+final case class HostConnectionPoolSetup(
+  eagerClose: Boolean,
+  host: String,
+  port: Int,
+  setup: ConnectionPoolSetup)
 
 final case class ConnectionPoolSetup(
   settings: ConnectionPoolSettings,
