@@ -503,9 +503,10 @@ class Http(system: ExtendedActorSystem) extends akka.actor.Extension {
    * In order to allow for easy response-to-request association the flow takes in a custom, opaque context
    * object of type `T` from the application which is emitted together with the corresponding response.
    */
-  def superPool[T](settings: ConnectionPoolSettings,
+  def superPool[T](eagerClose: Boolean = false,
+                   settings: ConnectionPoolSettings,
                    log: LoggingAdapter, materializer: Materializer): Flow[Pair[HttpRequest, T], Pair[Try[HttpResponse], T], NotUsed] =
-    adaptTupleFlow(delegate.superPool[T](defaultClientHttpsContext.asScala, settings.asScala, log)(materializer))
+    adaptTupleFlow(delegate.superPool[T](defaultClientHttpsContext.asScala, eagerClose, settings.asScala, log)(materializer))
 
   /**
    * Fires a single [[HttpRequest]] across the (cached) host connection pool for the request's

@@ -283,10 +283,11 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * use the `akka.http.host-connection-pool` config section or pass in a [[ConnectionPoolSettings]] explicitly.
    */
   def newHostConnectionPool[T](host: String, port: Int = 80,
+                               eagerClose: Boolean = false,
                                settings: ConnectionPoolSettings = ConnectionPoolSettings(system),
                                log: LoggingAdapter = system.log)(implicit fm: Materializer): Flow[(HttpRequest, T), (Try[HttpResponse], T), HostConnectionPool] = {
     val cps = ConnectionPoolSetup(settings, ConnectionContext.noEncryption(), log)
-    newHostConnectionPool(HostConnectionPoolSetup(host, port, cps))
+    newHostConnectionPool(HostConnectionPoolSetup(host, port, cps), eagerClose)
   }
 
   /**
@@ -299,11 +300,12 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * use the `akka.http.host-connection-pool` config section or pass in a [[ConnectionPoolSettings]] explicitly.
    */
   def newHostConnectionPoolHttps[T](host: String, port: Int = 443,
+                                    eagerClose: Boolean = false,
                                     connectionContext: HttpsConnectionContext = defaultClientHttpsContext,
                                     settings: ConnectionPoolSettings = ConnectionPoolSettings(system),
                                     log: LoggingAdapter = system.log)(implicit fm: Materializer): Flow[(HttpRequest, T), (Try[HttpResponse], T), HostConnectionPool] = {
     val cps = ConnectionPoolSetup(settings, connectionContext, log)
-    newHostConnectionPool(HostConnectionPoolSetup(host, port, cps))
+    newHostConnectionPool(HostConnectionPoolSetup(host, port, cps), eagerClose)
   }
 
   /**
@@ -322,9 +324,9 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * In order to allow for easy response-to-request association the flow takes in a custom, opaque context
    * object of type `T` from the application which is emitted together with the corresponding response.
    */
-  private[akka] def newHostConnectionPool[T](setup: HostConnectionPoolSetup)(
+  private[akka] def newHostConnectionPool[T](setup: HostConnectionPoolSetup, eagerClose: Boolean)(
     implicit fm: Materializer): Flow[(HttpRequest, T), (Try[HttpResponse], T), HostConnectionPool] = {
-    val gatewayFuture = FastFuture.successful(new PoolGateway(setup, Promise()))
+    val gatewayFuture = FastFuture.successful(new PoolGateway(setup, eagerClose, Promise()))
     gatewayClientFlow(setup, gatewayFuture)
   }
 
@@ -349,11 +351,12 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * use the `akka.http.host-connection-pool` config section or pass in a [[ConnectionPoolSettings]] explicitly.
    */
   def cachedHostConnectionPool[T](host: String, port: Int = 80,
+                                  eagerClose: Boolean = false,
                                   settings: ConnectionPoolSettings = ConnectionPoolSettings(system),
                                   log: LoggingAdapter = system.log)(implicit fm: Materializer): Flow[(HttpRequest, T), (Try[HttpResponse], T), HostConnectionPool] = {
     val cps = ConnectionPoolSetup(settings, ConnectionContext.noEncryption(), log)
     val setup = HostConnectionPoolSetup(host, port, cps)
-    cachedHostConnectionPool(setup)
+    cachedHostConnectionPool(setup, eagerClose)
   }
 
   /**
@@ -366,12 +369,13 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * use the `akka.http.host-connection-pool` config section or pass in a [[ConnectionPoolSettings]] explicitly.
    */
   def cachedHostConnectionPoolHttps[T](host: String, port: Int = 443,
+                                       eagerClose: Boolean = false,
                                        connectionContext: HttpsConnectionContext = defaultClientHttpsContext,
                                        settings: ConnectionPoolSettings = ConnectionPoolSettings(system),
                                        log: LoggingAdapter = system.log)(implicit fm: Materializer): Flow[(HttpRequest, T), (Try[HttpResponse], T), HostConnectionPool] = {
     val cps = ConnectionPoolSetup(settings, connectionContext, log)
     val setup = HostConnectionPoolSetup(host, port, cps)
-    cachedHostConnectionPool(setup)
+    cachedHostConnectionPool(setup, eagerClose)
   }
 
   /**
@@ -391,9 +395,9 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * In order to allow for easy response-to-request association the flow takes in a custom, opaque context
    * object of type `T` from the application which is emitted together with the corresponding response.
    */
-  private def cachedHostConnectionPool[T](setup: HostConnectionPoolSetup)(
+  private def cachedHostConnectionPool[T](setup: HostConnectionPoolSetup, eagerClose: Boolean)(
     implicit fm: Materializer): Flow[(HttpRequest, T), (Try[HttpResponse], T), HostConnectionPool] =
-    gatewayClientFlow(setup, cachedGateway(setup))
+    gatewayClientFlow(setup, cachedGateway(setup, eagerClose))
 
   /**
    * Creates a new "super connection pool flow", which routes incoming requests to a (cached) host connection pool
@@ -412,10 +416,11 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
    * To configure additional settings for the pool (and requests made using it),
    * use the `akka.http.host-connection-pool` config section or pass in a [[ConnectionPoolSettings]] explicitly.
    */
-  def superPool[T](connectionContext: HttpsConnectionContext = defaultClientHttpsContext,
+  def superPool[T](eagerClose: Boolean = false,
+                   connectionContext: HttpsConnectionContext = defaultClientHttpsContext,
                    settings: ConnectionPoolSettings = ConnectionPoolSettings(system),
                    log: LoggingAdapter = system.log)(implicit fm: Materializer): Flow[(HttpRequest, T), (Try[HttpResponse], T), NotUsed] =
-    clientFlow[T](settings) { request ⇒ request -> cachedGateway(request, settings, connectionContext, log) }
+    clientFlow[T](settings) { request ⇒ request -> cachedGateway(request, eagerClose, settings, connectionContext, log) }
 
   /**
    * Fires a single [[HttpRequest]] across the (cached) host connection pool for the request's
@@ -431,7 +436,7 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
                     settings: ConnectionPoolSettings = ConnectionPoolSettings(system),
                     log: LoggingAdapter = system.log)(implicit fm: Materializer): Future[HttpResponse] =
     try {
-      val gatewayFuture = cachedGateway(request, settings, connectionContext, log)
+      val gatewayFuture = cachedGateway(request, eagerClose = true, settings, connectionContext, log)
       gatewayFuture.flatMap(_(request))(fm.executionContext)
     } catch {
       case e: IllegalUriException ⇒ FastFuture.failed(e)
@@ -552,6 +557,7 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
   private[this] val hostPoolCache = new ConcurrentHashMap[HostConnectionPoolSetup, Future[PoolGateway]]
 
   private def cachedGateway(request: HttpRequest,
+                            eagerClose: Boolean = false,
                             settings: ConnectionPoolSettings, connectionContext: ConnectionContext,
                             log: LoggingAdapter)(implicit fm: Materializer): Future[PoolGateway] =
     if (request.uri.scheme.nonEmpty && request.uri.authority.nonEmpty) {
@@ -559,20 +565,20 @@ class HttpExt(private val config: Config)(implicit val system: ActorSystem) exte
       val setup = ConnectionPoolSetup(settings, httpsCtx, log)
       val host = request.uri.authority.host.toString()
       val hcps = HostConnectionPoolSetup(host, request.uri.effectivePort, setup)
-      cachedGateway(hcps)
+      cachedGateway(hcps, eagerClose)
     } else {
       val msg = s"Cannot determine request scheme and target endpoint as ${request.method} request to ${request.uri} doesn't have an absolute URI"
       throw new IllegalUriException(ErrorInfo(msg))
     }
 
   /** INTERNAL API */
-  private[http] def cachedGateway(setup: HostConnectionPoolSetup)(implicit fm: Materializer): Future[PoolGateway] = {
+  private[http] def cachedGateway(setup: HostConnectionPoolSetup, eagerClose: Boolean)(implicit fm: Materializer): Future[PoolGateway] = {
     val gatewayPromise = Promise[PoolGateway]()
     hostPoolCache.putIfAbsent(setup, gatewayPromise.future) match {
       case null ⇒ // only one thread can get here at a time
         val whenShuttingDown = Promise[Done]()
         val gateway =
-          try new PoolGateway(setup, whenShuttingDown)
+          try new PoolGateway(setup, eagerClose, whenShuttingDown)
           catch {
             case NonFatal(e) ⇒
               hostPoolCache.remove(setup)

@@ -47,6 +47,7 @@ private object PoolInterfaceActor {
  *   (ActorPublisher) and response sink (ActorSubscriber).
  */
 private class PoolInterfaceActor(hcps: HostConnectionPoolSetup,
+                                 eagerClose: Boolean,
                                  shutdownCompletedPromise: Promise[Done],
                                  gateway: PoolGateway)(implicit fm: Materializer)
   extends ActorSubscriber with ActorPublisher[RequestContext] with ActorLogging {
@@ -66,8 +67,8 @@ private class PoolInterfaceActor(hcps: HostConnectionPoolSetup,
     import setup._
 
     val connectionFlow = connectionContext match {
-      case httpsContext: HttpsConnectionContext ⇒ Http().outgoingConnectionHttps(host, port, httpsContext, None, false, settings.connectionSettings, setup.log)
-      case _                                    ⇒ Http().outgoingConnection(host, port, None, false, settings.connectionSettings, setup.log)
+      case httpsContext: HttpsConnectionContext ⇒ Http().outgoingConnectionHttps(host, port, httpsContext, None, eagerClose, settings.connectionSettings, setup.log)
+      case _                                    ⇒ Http().outgoingConnection(host, port, None, eagerClose, settings.connectionSettings, setup.log)
     }
 
     val poolFlow = PoolFlow(

@@ -35,6 +35,7 @@ private object PoolGateway {
  * get reused will automatically forward requests directed at them to the latest pool incarnation from the cache.
  */
 private[http] class PoolGateway(hcps: HostConnectionPoolSetup,
+                                eagerClose: Boolean,
                                 _shutdownStartedPromise: Promise[Done])( // constructor arg only
                                   implicit system: ActorSystem, fm: Materializer) {
   import PoolGateway._
@@ -42,7 +43,7 @@ private[http] class PoolGateway(hcps: HostConnectionPoolSetup,
 
   private val state = {
     val shutdownCompletedPromise = Promise[Done]()
-    val props = Props(new PoolInterfaceActor(hcps, shutdownCompletedPromise, this)).withDeploy(Deploy.local)
+    val props = Props(new PoolInterfaceActor(hcps, eagerClose, shutdownCompletedPromise, this)).withDeploy(Deploy.local)
     val ref = system.actorOf(props, PoolInterfaceActor.name.next())
     new AtomicReference[State](Running(ref, _shutdownStartedPromise, shutdownCompletedPromise))
   }
